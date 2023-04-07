@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { IPost } from '../../../../types/blog.type'
 import { useAddPostMutation, useGetPostQuery, useUpdatePostMutation } from '../../blog.service'
 import { useDispatch, useSelector } from 'react-redux'
-import { RootState } from '../../../../store'
+import { RootState } from '../../../../redux/store'
 import { cancerEditPost } from '../../blog.slice'
+import { isEntityError, isFetchBaseQueryError } from '../../../../utils/helpers'
+import classNames from 'classnames'
+import { toast } from 'react-toastify'
 
 const initialState: Omit<IPost, 'id'> = {
   title: '',
@@ -12,11 +15,27 @@ const initialState: Omit<IPost, 'id'> = {
   featuredImage: '',
   published: false
 }
+// lấy all key của initialState và all key có kiểu string
+type FormError =
+  | {
+      [Key in keyof typeof initialState]: string
+    }
+  | null
+
 export default function CreatePost() {
   const postId = useSelector((state: RootState) => state.blog.postId)
   let [formData, setFormData] = useState<typeof initialState | IPost>(initialState)
   const [addPost, addPostResult] = useAddPostMutation()
   const [updatePost, updatePostResult] = useUpdatePostMutation()
+
+  const errorForm: FormError = useMemo(() => {
+    const errorResult = postId ? updatePostResult.error : addPostResult.error
+    if (isEntityError(errorResult)) {
+      return errorResult.data.error as FormError
+    }
+    return null
+  }, [postId, updatePostResult, addPostResult])
+
   const { data: post } = useGetPostQuery(postId, {
     skip: !postId
   })
@@ -26,8 +45,11 @@ export default function CreatePost() {
     try {
       if (postId) {
         await updatePost({ body: formData as IPost, id: postId }).unwrap()
+        await toast.success('Update success')
+        dispatch(cancerEditPost())
       } else {
         await addPost(formData).unwrap()
+        await toast.success('Add success')
       }
       setFormData(initialState)
     } catch (error) {
@@ -93,18 +115,35 @@ export default function CreatePost() {
         </div>
       </div>
       <div className='mb-6'>
-        <label htmlFor='publishDate' className='mb-2 block text-sm font-medium text-gray-900 dark:text-gray-300'>
+        <label
+          htmlFor='publishDate'
+          className={classNames('mb-2 block text-sm font-medium', {
+            'text-red-700': Boolean(errorForm?.publishDate),
+            'dark:text-gray-300': !Boolean(errorForm?.publishDate)
+          })}
+        >
           Publish Date
         </label>
         <input
           type='datetime-local'
           id='publishDate'
-          className='block w-56 rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500'
-          placeholder='Title'
+          className={classNames('block w-56 rounded-lg border  p-2.5 text-sm  focus:outline-none ', {
+            'border-red-500 bg-red-50 text-red-900 placeholder-red-700 focus:border-red-500 focus:ring-blue-500':
+              Boolean(errorForm?.publishDate),
+            'border-gray-300 bg-gray-50 text-gray-900 focus:border-blue-500 focus:ring-blue-500': Boolean(
+              errorForm?.publishDate
+            )
+          })}
           required
           value={formData.publishDate}
-          onChange={(e) => setFormData((prev) => ({ ...prev, publishDate: e.target.value }))}
+          onChange={(event) => setFormData((prev) => ({ ...prev, publishDate: event.target.value }))}
         />
+        {errorForm?.publishDate && (
+          <p className='mt-2 text-sm text-red-600'>
+            <span className='font-medium'>Lỗi! </span>
+            {errorForm.publishDate}
+          </p>
+        )}
       </div>
       <div className='mb-6 flex items-center'>
         <input
